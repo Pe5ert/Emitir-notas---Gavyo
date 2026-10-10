@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verificacao - Economart</title>
+  <link rel="icon" type="image/png" href="/static/img/favicon.png">
+  <link rel="apple-touch-icon" href="/static/img/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/main.css?v={{ STATIC_VERSION }}">
+</head>
+<body class="login-page">
+  <div class="login-container">
+    <div class="login-card" style="max-width:640px"{% if invoice %} id="verify-root" data-invoice-id="{{ invoice.id }}"{% endif %}>
+      <div class="login-logo">
+        <img src="/static/img/logo.png" alt="Economart" class="login-logo-img">
+      </div>
+      {% if not invoice %}
+        <h1 class="login-title">Nota nao encontrada</h1>
+        <p class="login-subtitle">O codigo informado nao corresponde a uma nota fiscal registrada.</p>
+        <p style="text-align:center;margin-top:16px"><a href="/" class="btn btn-ghost">Voltar</a></p>
+      {% else %}
+        <h1 class="login-title">Verificacao de Nota</h1>
+        <p class="login-subtitle">Esta nota e autentica quando o status estiver APROVADO ou LANCADO.</p>
+
+        <div id="verify-banner-public" class="verify-banner verify-banner-info" style="display:none">
+          <div class="verify-banner-body">
+            <strong>Esta e a versao publica do comprovante.</strong>
+            <p>Os dados essenciais para conferencia (numero, valor, status e
+               assinatura digital) estao visiveis. Para abrir tambem fornecedor,
+               descricao e responsaveis pelo fluxo, faca login.</p>
+          </div>
+          <div class="verify-banner-actions">
+            <a href="/login?next=/verify/{{ invoice.id }}" class="btn btn-primary">Entrar para ver completo</a>
+          </div>
+        </div>
+
+        <div id="verify-banner-loading" class="verify-banner" style="display:none">
+          <span class="verify-banner-body">Conferindo sua sessao...</span>
+        </div>
+
+        <div id="verify-banner-full" class="verify-banner verify-banner-success" style="display:none">
+          <div class="verify-banner-body">
+            <strong>Voce esta vendo o detalhamento completo.</strong>
+            <p>Sua conta participa do fluxo desta nota.</p>
+          </div>
+          <div class="verify-banner-actions">
+            <a href="/invoices/{{ invoice.id }}" class="btn btn-primary">Abrir nota</a>
+          </div>
+        </div>
+
+        <div id="verify-banner-denied" class="verify-banner verify-banner-warn" style="display:none">
+          <div class="verify-banner-body">
+            <strong>Voce ja esta logado, mas esta nota e de outro fluxo.</strong>
+            <p>O detalhamento completo so aparece para quem participou diretamente
+               desta nota (criou, aprovou, lancou ou faz parte de contas a pagar).
+               Voce continua vendo a versao publica abaixo — se acha que
+               <em>deveria</em> ter acesso, talvez tenha entrado com a conta errada.</p>
+          </div>
+          <div class="verify-banner-actions">
+            <button type="button" id="verify-switch-account" class="btn btn-ghost">Entrar com outra conta</button>
+          </div>
+        </div>
+
+        <div class="detail-grid">
+          <div class="detail-item"><span>Status</span><strong id="vf-status">{{ status_label }}</strong></div>
+          <div class="detail-item"><span>Numero</span><strong id="vf-number">{{ invoice.invoice_number }}</strong></div>
+          <div class="detail-item"><span>Setor</span><strong id="vf-dept">{{ department_name or '-' }}</strong></div>
+          <div class="detail-item"><span>Valor</span><strong id="vf-amount">{{ amount_formatted }}</strong></div>
+          <div class="detail-item"><span>Aprovacao Diretor</span><strong id="vf-dir-at">{{ director_reviewed_at_br or '-' }}</strong></div>
+          <div class="detail-item">
+            <span>Fornecedor ({{ supplier_doc_type or '-' }})</span>
+            <strong>
+              <span id="vf-supplier-name">{{ supplier_name_masked or '-' }}</span>
+              {% if supplier_doc_masked %}
+                <br><small class="text-muted" style="font-weight:400" id="vf-supplier-doc">{{ supplier_doc_masked }}</small>
+              {% else %}
+                <br><small class="text-muted" style="font-weight:400" id="vf-supplier-doc">-</small>
+              {% endif %}
+            </strong>
+          </div>
+          <div class="detail-item">
+            <span>Gestor</span>
+            <strong id="vf-manager">{{ manager_name_masked or '-' }}</strong>
+          </div>
+          <div class="detail-item">
+            <span>Diretor</span>
+            <strong id="vf-director">{{ director_name_masked or '-' }}</strong>
+          </div>
+          <div class="detail-item"><span>Assinatura Digital</span><strong style="font-family:monospace;font-size:0.85em">{{ auth_hash }}</strong></div>
+        </div>
+
+        <div id="vf-extra" style="display:none;margin-top:16px">
+          <div class="detail-item">
+            <span>Descricao</span>
+            <strong id="vf-desc" style="font-weight:400; white-space:pre-wrap"></strong>
+          </div>
+          <div class="detail-item">
+            <span>Datas</span>
+            <strong id="vf-dates" style="font-weight:400"></strong>
+          </div>
+          <div class="detail-item">
+            <span>Criado por</span>
+            <strong id="vf-creator" style="font-weight:400"></strong>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if invoice %}
+  {# FE-05 (auditoria set/2026): verify.js depende de window.Auth pra
+     revelar dados apos login. Sem core-auth/core-api carregados aqui,
+     Auth ficava undefined e o banner mascarado nunca era substituido.
+     Ordem importa: core primeiro, depois modulos de bootstrap. #}
+  <script src="/static/js/core.js?v={{ STATIC_VERSION }}" defer></script>
+  <script src="/static/js/core-auth.js?v={{ STATIC_VERSION }}" defer></script>
+  <script src="/static/js/core-api.js?v={{ STATIC_VERSION }}" defer></script>
+  <script src="/static/js/verify.js?v={{ STATIC_VERSION }}" defer></script>
+  {% endif %}
+</body>
+</html>

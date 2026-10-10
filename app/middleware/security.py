@@ -1,0 +1,317 @@
+import re
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+
+from app.config import settings
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
+
+rate_limit_buckets: dict[str, list[datetime]] = {}
+
+
+@dataclass(frozen=True)
+class RateLimitPolicy:
+    name: str
+    methods: frozenset[str]
+    pattern: re.Pattern[str]
+    max_requests: int
+    window_seconds: int
+
+
+RATE_LIMIT_POLICIES: tuple[RateLimitPolicy, ...] = (
+    RateLimitPolicy(
+        name="auth-login",
+        methods=frozenset({"POST"}),
+        pattern=re.compile(r"^/auth/login$"),
+        max_requests=10,
+        window_seconds=60,
+    ),
+    RateLimitPolicy(
+        name="auth-forgot-password",
+        methods=frozenset({"POST"}),
+        pattern=re.compile(r"^/auth/forgot-password$"),
+        max_requests=5,
+        window_seconds=600,
+    ),
+    RateLimitPolicy(
+        name="auth-reset-password",
+        methods=frozenset({"POST"}),
+        pattern=re.compile(r"^/auth/reset-password$"),
+        max_requests=8,
+        window_seconds=600,
+    ),
+    RateLimitPolicy(
+        name="lookup-cnpj",
+        methods=frozenset({"GET"}),
+        pattern=re.compile(r"^/api/invoices/lookup-cnpj/[^/]+$"),
+        max_requests=30,
+        window_seconds=60,
+    ),
+    RateLimitPolicy(
+        name="invoice-comments",
+        methods=frozenset({"GET", "POST"}),
+        pattern=re.compile(r"^/api/invoices/[^/]+/comments$"),
+        max_requests=30,
+        window_seconds=60,
+    ),
+    # SEC-03 (auditoria set/2026): /verify e publico e sem limite era vetor
+    # de enumeracao/DoS. UUIDv4 tem entropia alta, mas qualquer vazamento
+    # parcial permitia varredura ilimitada.
+    RateLimitPolicy(
+        name="verify-public",
+        methods=frozenset({"GET"}),
+        pattern=re.compile(r"^/verify/[^/]+$"),
+        max_requests=20,
+        window_seconds=60,
+    ),
+    RateLimitPolicy(
+        name="verify-full",
+        methods=frozenset({"GET"}),
+        pattern=re.compile(r"^/api/invoices/[^/]+/verify-full$"),
+        max_requests=30,
+        window_seconds=60,
+    ),
+    # SEC-05: /auth/refresh sem limite permite usuario/atacante martelar
+    # emissao de access tokens. Limite generoso pra nao afetar uso legitimo.
+    RateLimitPolicy(
+        name="auth-refresh",
+        methods=frozenset({"POST"}),
+        pattern=re.compile(r"^/auth/refresh$"),
+        max_requests=60,
+        window_seconds=60,
+    ),
+    # SEC-05: criacao de nota e o endpoint mais caro (upload + crypto + R2).
+    # Sem limite, uma conta comprometida vira DoS de storage.
+    RateLimitPolicy(
+        name="invoice-create",
+        methods=frozenset({"POST"}),
+        pattern=re.compile(r"^/api/invoices/?$"),
+        max_requests=30,
+        window_seconds=60,
+    ),
+)
+
+
+def _trusted_proxy_prefixes() -> tuple[str, ...]:
+    """SEC-06 (auditoria set/2026): antes, PROD confiava cegamente no
+    primeiro elemento de X-Forwarded-For — atacante forjava valor
+    aleatorio e cada request caia em bucket distinto (bypass total de
+    rate limit) e envenenava audit logs.
+
+    Agora so honramos o header quando o socket vem de um proxy conhecido.
+    Configuravel via env TRUSTED_PROXY_PREFIXES (CSV de prefixes CIDR-like).
+    Sem configuracao: default cobre ranges privados/loopback do Railway.
+    """
+    import os
+    raw = os.getenv("TRUSTED_PROXY_PREFIXES", "")
+    if raw.strip():
+        return tuple(p.strip() for p in raw.split(",") if p.strip())
+    # Defaults conservadores: loopback + private ranges (proxies internos)
+    return ("127.", "10.", "172.16.", "172.17.", "172.18.", "172.19.",
+            "172.20.", "172.21.", "172.22.", "172.23.", "172.24.",
+            "172.25.", "172.26.", "172.27.", "172.28.", "172.29.",
+            "172.30.", "172.31.", "192.168.", "::1")
+
+
+def _client_ip(request: Request) -> str:
+    """Identifica o cliente para rate limit.
+
+    SEC-06: honra X-Forwarded-For apenas quando o socket vem de proxy
+    conhecido. Em outros casos, usa o IP do socket direto.
+    """
+    socket_ip = (request.client.host if request.client else "") or ""
+    if settings.ENVIRONMENT.upper() in {"PROD", "PRODUCTION"}:
+        prefixes = _trusted_proxy_prefixes()
+        if any(socket_ip.startswith(p) for p in prefixes):
+            forwarded_for = request.headers.get("x-forwarded-for", "")
+            first_hop = forwarded_for.split(",", 1)[0].strip()
+            if first_hop:
+                return first_hop[:64]
+    return (socket_ip or "unknown")[:64]
+
+
+def _matching_policy(request: Request) -> RateLimitPolicy | None:
+    method = request.method.upper()
+    path = request.url.path
+    for policy in RATE_LIMIT_POLICIES:
+        if method in policy.methods and policy.pattern.match(path):
+            return policy
+    return None
+
+
+def _sweep_expired(now: datetime) -> None:
+    """Remove buckets antigos para conter crescimento em ataque distribuido."""
+    if len(rate_limit_buckets) < 1000:
+        return
+    oldest_window = now - timedelta(
+        seconds=max(policy.window_seconds for policy in RATE_LIMIT_POLICIES)
+    )
+    expired = [
+        key for key, timestamps in rate_limit_buckets.items()
+        if not any(timestamp > oldest_window for timestamp in timestamps)
+    ]
+    for key in expired:
+        del rate_limit_buckets[key]
+
+
+# Limites de body por classe de rota. Pentest jun/2026 (#SEC-6) confirmou
+# que uvicorn/starlette nao impoem teto nativo: atacante mandando 12 PDFs de
+# 9MB (~110MB) gastava ~34s de CPU/memoria do servidor antes do limite
+# "Maximo 5 arquivos" do router rejeitar, abrindo vetor de DoS por flooding.
+# Estes limites cortam o request ANTES do parse de multipart.
+#  - upload de invoice: 5 arquivos x 10MB + overhead = 55MB de teto
+#  - JSON/forms simples: 1MB e generoso pra qualquer payload legitimo
+MAX_UPLOAD_BODY_BYTES = 55 * 1024 * 1024
+MAX_JSON_BODY_BYTES = 1 * 1024 * 1024
+
+# Rotas que aceitam upload de arquivo (multipart) e portanto podem subir
+# ate o teto generoso. Casa por prefixo + verbo.
+_UPLOAD_ROUTES: tuple[tuple[str, str], ...] = (
+    ("POST", "/api/invoices/"),
+    ("PATCH", "/api/invoices/"),
+    ("PUT", "/api/invoices/"),
+)
+
+
+def _is_upload_route(request: Request) -> bool:
+    if request.method.upper() not in {"POST", "PATCH", "PUT"}:
+        return False
+    path = request.url.path
+    return path.startswith("/api/invoices/") and "comments" not in path
+
+
+# SEC-13 (auditoria set/2026): rotas HTML autenticadas dependem so do
+# cookie refresh_token com SameSite=strict pra proteger contra CSRF.
+# Modernos honram; alguns navegadores antigos e cenarios de subdominio
+# comprometido nao. Este middleware adiciona uma 2a camada barata:
+# rejeita metodos de mutacao (POST/PUT/PATCH/DELETE) quando o cabecalho
+# Origin ou Referer nao bate com o host da propria aplicacao.
+# APIs Bearer nao usam cookie e sao imunes a CSRF classico — este
+# middleware so afeta rotas de cookie. Requisicoes sem Origin (curl,
+# xhr same-origin sem preflight) sao permitidas — o SameSite ja protege
+# cookie-based CSRF nesses casos.
+_MUTATION_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+class CSRFOriginMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        method = request.method.upper()
+        if method not in _MUTATION_METHODS:
+            return await call_next(request)
+        origin = request.headers.get("origin", "")
+        # Sem Origin: permite (fetch same-origin sem CORS preflight,
+        # curl, testes). SameSite=strict do cookie ja cobre CSRF classico.
+        if not origin:
+            return await call_next(request)
+        host = request.headers.get("host", "")
+        # Compara host do Origin com Host do request. Se bater, ok.
+        try:
+            from urllib.parse import urlparse
+            origin_host = urlparse(origin).netloc.lower()
+        except Exception:
+            origin_host = ""
+        if origin_host and host and origin_host == host.lower():
+            return await call_next(request)
+        # Permite tambem origens explicitas na allowlist (ex: dominios
+        # alternativos, subdominio de staging).
+        import os as _os
+        allowlist_raw = _os.getenv("CSRF_ALLOWED_ORIGINS", "")
+        allowlist = {o.strip().lower() for o in allowlist_raw.split(",") if o.strip()}
+        if origin.lower() in allowlist:
+            return await call_next(request)
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Origem nao permitida para esta operacao."},
+        )
+
+
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Le Content-Length declarado. Se ausente (chunked), o
+        # parsing posterior do FastAPI ainda limita por arquivo
+        # individualmente — DoS via streaming infinito e mitigado
+        # pelo timeout do uvicorn.
+        cl = request.headers.get("content-length")
+        if cl is not None:
+            try:
+                size = int(cl)
+            except ValueError:
+                size = 0
+            limit = MAX_UPLOAD_BODY_BYTES if _is_upload_route(request) else MAX_JSON_BODY_BYTES
+            if size > limit:
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "detail": (
+                            f"Corpo da requisicao excede o limite de "
+                            f"{limit // (1024 * 1024)}MB."
+                        )
+                    },
+                )
+        return await call_next(request)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        # SEC-17: X-XSS-Protection foi removido dos navegadores modernos e o
+        # modo=block introduziu bugs proprios. CSP e o controle real.
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Camera liberada para a propria origem (scanner QR em /contas-a-pagar/scanner).
+        # Microfone e geolocalizacao seguem bloqueados.
+        response.headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()"
+        # HSTS: força HTTPS por 1 ano (habilite apenas em producao com HTTPS)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # CSP — script-src SEM unsafe-inline e a protecao critica contra XSS.
+        # style-src 'unsafe-inline' e aceitavel (baixo risco) e necessario porque
+        # varios templates usam style="..." inline para espacamento contextual.
+        response.headers[
+            "Content-Security-Policy"
+        ] = (
+            "default-src 'self'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src https://fonts.gstatic.com; "
+            "img-src 'self' data:; "
+            # SEC-15: jsQR vendorizado localmente (/static/vendor/jsQR.js).
+            # jsdelivr removido do allowlist.
+            "script-src 'self'; "
+            "frame-src 'self' blob:; "
+            "object-src 'none'; "
+            "base-uri 'self'"
+        )
+        return response
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        policy = _matching_policy(request)
+        if policy:
+            now = datetime.now(timezone.utc)
+            window_start = now - timedelta(seconds=policy.window_seconds)
+            ip = _client_ip(request)
+            bucket_key = f"{policy.name}:{ip}"
+            timestamps = [
+                timestamp
+                for timestamp in rate_limit_buckets.get(bucket_key, [])
+                if timestamp > window_start
+            ]
+            if len(timestamps) >= policy.max_requests:
+                rate_limit_buckets[bucket_key] = timestamps
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Muitas tentativas. Aguarde antes de tentar novamente."},
+                    headers={
+                        "Retry-After": str(policy.window_seconds),
+                        "X-RateLimit-Limit": str(policy.max_requests),
+                        "X-RateLimit-Window": str(policy.window_seconds),
+                    },
+                )
+            timestamps.append(now)
+            rate_limit_buckets[bucket_key] = timestamps
+            _sweep_expired(now)
+
+        return await call_next(request)

@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_id %}dashboard{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block content %}
+{# Banner de acoes administrativas pendentes contra o usuario atual.
+   Populado por dashboard-v2.js via GET /api/pending-actions/me. #}
+<div id="pending-actions-banner" class="pending-banner hidden"></div>
+{#
+  Dashboard com layout condicional por perfil. Quatro ramos:
+    CONTAS_A_PAGAR  -> conferencia (scanner + 'Conferidas hoje')
+    ADMIN           -> administracao (usuarios, setores, auditoria, email)
+    EMPLOYEE        -> criacao (Nova nota + Minhas notas + alerta de reprovadas)
+    MANAGER/DIRECTOR/FINANCE -> aprovacao (Revisar fila + alertas operacionais)
+
+  Contadores nos data-attrs sao hidratados por dashboard-v2.js a partir
+  de /alerts/ (e /api/contas-a-pagar/stats no perfil CONTAS_A_PAGAR).
+#}
+<div class="page-header">
+  <h1 id="dashboard-greeting">Ola, {{ current_user.name.split(' ')[0] }}</h1>
+  <p class="text-muted" id="dashboard-subtitle">Acompanhe suas notas e os alertas do dia.</p>
+</div>
+
+{% set role = current_user.role.value if current_user.role.value is defined else current_user.role %}
+
+{# ────────────── PERFIL: CONTAS_A_PAGAR ────────────── #}
+{% if role == 'CONTAS_A_PAGAR' %}
+<section aria-labelledby="acoes-h">
+  <div class="section-header"><h2 id="acoes-h">Acoes</h2></div>
+  <div class="qa-stack">
+    <a class="qa qa-hero" href="/contas-a-pagar/scanner" id="qa-open-scanner">
+      <span class="qa-ic ic-28"><span class="icon icon-scan-line"></span></span>
+      <span class="qa-body"><strong>Abrir scanner</strong><p>Bipador ou camera — modo de leitura continua</p></span>
+      <span class="qa-shortcut">F2</span>
+    </a>
+    <div class="qa-grid-2">
+      <a class="qa" href="/invoices?status=APROVADO">
+        <span class="qa-ic ic-20"><span class="icon icon-search"></span></span>
+        <span class="qa-body"><strong>Buscar nota</strong><p>Pelo numero ou ID do QR</p></span>
+      </a>
+      <a class="qa" href="/invoices?conferred_today=1">
+        <span class="qa-ic ic-20"><span class="icon icon-check"></span></span>
+        <span class="qa-body"><strong>Conferidas hoje</strong><p>Historico do turno</p></span>
+        <span class="qa-count qa-count-success" id="conferidas-hoje-count">—</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="alertas-h">
+  <div class="section-header"><h2 id="alertas-h">Alertas</h2></div>
+  <div class="qa-stack" id="dashboard-alerts-cap"></div>
+</section>
+
+{# ────────────── PERFIL: ADMIN ────────────── #}
+{% elif role == 'ADMIN' %}
+<section aria-labelledby="acoes-h">
+  <div class="section-header"><h2 id="acoes-h">Administracao</h2></div>
+  <div class="qa-stack">
+    <a class="qa qa-hero" href="/admin/users">
+      <span class="qa-ic ic-28"><span class="icon icon-user"></span></span>
+      <span class="qa-body"><strong>Gerenciar usuarios</strong><p>Cadastrar, editar perfil, redefinir senha, encerrar contas</p></span>
+    </a>
+    <div class="qa-grid-2">
+      <a class="qa" href="/admin/departments">
+        <span class="qa-ic ic-20"><span class="icon icon-building-2"></span></span>
+        <span class="qa-body"><strong>Setores</strong><p>Estrutura e diretores responsaveis</p></span>
+      </a>
+      <a class="qa" href="/admin/audit-logs">
+        <span class="qa-ic ic-20"><span class="icon icon-file-search"></span></span>
+        <span class="qa-body"><strong>Auditoria</strong><p>Trilha completa de acoes</p></span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="alertas-h">
+  <div class="section-header"><h2 id="alertas-h">Visao operacional</h2></div>
+  <div class="qa-stack" id="dashboard-alerts-admin"></div>
+</section>
+
+{# ────────────── PERFIL: EMPLOYEE ────────────── #}
+{% elif role == 'EMPLOYEE' %}
+<section aria-labelledby="acoes-h">
+  <div class="section-header"><h2 id="acoes-h">Acoes</h2></div>
+  <div class="qa-stack">
+    <a class="qa qa-hero" href="/invoices/new">
+      <span class="qa-ic ic-28"><span class="icon icon-plus"></span></span>
+      <span class="qa-body"><strong>Nova nota</strong><p>Lancar uma nota fiscal para aprovacao</p></span>
+    </a>
+    <div class="qa-grid-2">
+      <a class="qa" href="/invoices?created_by=me">
+        <span class="qa-ic ic-20"><span class="icon icon-file-text"></span></span>
+        <span class="qa-body"><strong>Minhas notas</strong><p id="qa-mine-meta">Acompanhar status</p></span>
+        <span class="qa-count hidden" id="qa-mine-count">—</span>
+      </a>
+      <a class="qa" href="/invoices">
+        <span class="qa-ic ic-20"><span class="icon icon-search"></span></span>
+        <span class="qa-body"><strong>Buscar notas</strong><p>Filtros e historico</p></span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="alertas-h">
+  <div class="section-header"><h2 id="alertas-h">Alertas</h2></div>
+  <div class="qa-stack" id="dashboard-alerts-employee"></div>
+</section>
+
+{# ────────────── PERFIL: APROVADORES (MANAGER / DIRECTOR / FINANCE) ────────────── #}
+{% else %}
+<section aria-labelledby="acoes-h">
+  <div class="section-header"><h2 id="acoes-h">Acoes</h2></div>
+  <div class="qa-stack">
+    {% if role == 'MANAGER' %}
+    <a class="qa qa-hero" href="/manager/queue" id="qa-review-queue">
+      <span class="qa-ic ic-28"><span class="icon icon-activity"></span></span>
+      <span class="qa-body"><strong>Revisar fila</strong><p>Aprovar ou reprovar notas do seu setor</p></span>
+      <span class="qa-count" id="qa-review-count">—</span>
+    </a>
+    {% elif role == 'DIRECTOR' %}
+    <a class="qa qa-hero" href="/director/queue" id="qa-review-queue">
+      <span class="qa-ic ic-28"><span class="icon icon-activity"></span></span>
+      <span class="qa-body"><strong>Aprovar como diretor</strong><p>Notas encaminhadas pelos gestores</p></span>
+      <span class="qa-count" id="qa-review-count">—</span>
+    </a>
+    {% elif role == 'FINANCE' %}
+    <a class="qa qa-hero" href="/finance/queue" id="qa-review-queue">
+      <span class="qa-ic ic-28"><span class="icon icon-circle-dollar-sign"></span></span>
+      <span class="qa-body"><strong>Lancar notas aprovadas</strong><p>Fila do Financeiro</p></span>
+      <span class="qa-count" id="qa-review-count">—</span>
+    </a>
+    {% endif %}
+
+    <div class="qa-grid-3">
+      <a class="qa" href="/invoices/new">
+        <span class="qa-ic ic-20"><span class="icon icon-plus"></span></span>
+        <span class="qa-body"><strong>Nova nota</strong><p>Lancar uma nota fiscal</p></span>
+      </a>
+      <a class="qa" href="/invoices">
+        <span class="qa-ic ic-20"><span class="icon icon-search"></span></span>
+        <span class="qa-body"><strong>Buscar notas</strong><p>Filtros e totalizer</p></span>
+      </a>
+      <a class="qa" href="/invoices?created_by=me">
+        <span class="qa-ic ic-20"><span class="icon icon-file-text"></span></span>
+        <span class="qa-body"><strong>Minhas notas</strong><p id="qa-mine-meta">Suas notas em andamento</p></span>
+        <span class="qa-count hidden" id="qa-mine-count">—</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="alertas-h">
+  <div class="section-header"><h2 id="alertas-h">Alertas</h2></div>
+  <div class="qa-stack" id="dashboard-alerts-approver"></div>
+</section>
+{% endif %}
+
+<section aria-labelledby="recentes-h">
+  <div class="section-header">
+    <h2 id="recentes-h">Notas recentes</h2>
+    <a href="/invoices" class="btn btn-ghost btn-sm">Ver todas</a>
+  </div>
+  <div class="table-wrap">
+    <table class="table" id="dashboard-recent">
+      <caption class="sr-only">Notas fiscais recentes</caption>
+      <thead><tr><th scope="col">Numero</th><th scope="col">Fornecedor</th><th scope="col">Valor</th><th scope="col">Vencimento</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+        <tr><td colspan="5" class="dashboard-recent-empty text-muted">Carregando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/dashboard-v2.js?v={{ STATIC_VERSION }}" defer></script>
+{% endblock %}

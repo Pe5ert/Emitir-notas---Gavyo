@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Detalhe da Nota{% endblock %}
+{% block page_id %}invoice-detail{% endblock %}
+{% block nav_invoices %}active{% endblock %}
+{% block content %}
+<div id="invoice-detail" data-invoice-id="{{ invoice_id }}">
+  <div class="page-header page-header-row">
+    <div>
+      <a href="/invoices" class="text-muted back-link">&larr; Minhas notas</a>
+      <h1 id="detail-title">Nota Fiscal</h1>
+      <p class="text-muted" id="detail-subtitle"></p>
+    </div>
+    <div id="detail-status"></div>
+  </div>
+
+  <div id="detail-actions" class="action-row"></div>
+  <div id="rejection-box" class="alert-banner alert-error hidden"></div>
+
+  <div class="detail-layout">
+    <!-- Coluna esquerda: dados + timeline -->
+    <div class="detail-left">
+      <div class="detail-grid" id="detail-grid"></div>
+      <div class="section-header"><h2>Timeline de aprovacao</h2></div>
+      <div class="timeline" id="invoice-timeline"></div>
+
+      <div class="section-header" id="comments-header">
+        <h2>Comentarios <span class="text-muted text-xs" id="comments-count"></span></h2>
+      </div>
+      <div class="comments-thread" id="comments-thread">
+        <p class="text-muted text-xs">Carregando comentarios...</p>
+      </div>
+      <form id="comments-form" class="comments-form">
+        <textarea
+          id="comments-input"
+          class="form-input"
+          rows="2"
+          maxlength="2000"
+          aria-describedby="comments-help"
+          placeholder="Pergunte algo ao gestor, diretor ou criador — sem precisar reprovar a nota."
+        ></textarea>
+        <div class="comments-form-actions">
+          <span class="text-muted text-xs" id="comments-help">Maximo 2000 caracteres. Comentarios sao permanentes.</span>
+          <button type="submit" class="btn btn-primary btn-sm" id="comments-submit" disabled>Comentar</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Coluna direita: PDF inline -->
+    <div class="detail-right" id="pdf-panel" style="display:none">
+      <div class="pdf-panel-header">
+        <span>Documento PDF</span>
+        <div class="pdf-toolbar">
+          <button type="button" class="btn btn-ghost btn-sm" id="pdf-zoom-out" title="Diminuir zoom (Ctrl + -)" aria-label="Diminuir zoom do PDF">−</button>
+          <span id="pdf-zoom-label" class="text-muted text-xs">100%</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="pdf-zoom-in" title="Aumentar zoom (Ctrl + +)" aria-label="Aumentar zoom do PDF">+</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="pdf-fullscreen" title="Tela cheia" aria-label="Abrir PDF em tela cheia">⛶</button>
+          <a id="pdf-download-link" class="btn btn-ghost btn-sm" target="_blank" title="Abrir em nova aba" aria-label="Abrir PDF em nova aba">↗</a>
+        </div>
+      </div>
+      <div class="pdf-iframe-wrap">
+        <iframe id="pdf-iframe" class="pdf-iframe" title="PDF da nota"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

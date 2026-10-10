@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == "edit" %}Editar Usuario{% else %}Novo Usuario{% endif %}{% endblock %}
+{% block page_id %}admin-user-form{% endblock %}
+{% block content %}
+<div id="admin-user-form-page" data-mode="{{ mode }}" data-user-id="{{ user_id | default('') }}">
+  <div class="page-header page-header-row">
+    <div>
+      <h1>{% if mode == "edit" %}Editar Usuario{% else %}Novo Usuario{% endif %}</h1>
+      <p class="text-muted">Defina perfil, setor e gestor imediato.</p>
+    </div>
+    <a class="btn btn-ghost" href="/admin/users">Voltar para lista</a>
+  </div>
+
+  {# Cartao de contexto: quando editando, mostra CLARAMENTE qual usuario
+     esta sendo alterado e quem esta fazendo a alteracao. Reduz risco
+     de editar errado quando admin abre URL direto pelo historico. #}
+  {% if mode == "edit" %}
+  <div id="edit-context-card" class="card hidden" style="margin-bottom:16px;border-left:4px solid #FF6B00;padding:14px 18px;background:#fff7ed;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px">
+      <div style="font-size:12px;color:#7c2d12;letter-spacing:.05em;font-weight:600;margin-bottom:4px">VOCE ESTA EDITANDO</div>
+      <div style="font-size:18px;font-weight:700;color:#1c1917" id="edit-target-name">—</div>
+      <div style="font-size:13px;color:#57534e">
+        <span id="edit-target-email">—</span>
+        <span style="margin:0 8px;opacity:.5">·</span>
+        <span id="edit-target-role" style="text-transform:uppercase;font-weight:600">—</span>
+      </div>
+    </div>
+    <div id="edit-self-warning" style="font-size:12px;color:#92400e;max-width:280px;display:none">
+      <strong>⚠ Voce esta editando a SI MESMO.</strong> Alteracoes de perfil
+      ou desativacao podem te bloquear do sistema.
+    </div>
+    <div id="edit-other-info" style="font-size:12px;color:#57534e;max-width:280px">
+      Voce esta logado como <strong id="edit-acting-user">—</strong>.
+      Confira o usuario alvo antes de salvar.
+    </div>
+  </div>
+  {% endif %}
+
+  <form class="form-card" id="admin-user-form">
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="admin-user-name">Nome</label>
+        <input class="form-input" id="admin-user-name" maxlength="255" required>
+      </div>
+      <div class="form-group">
+        <label for="admin-user-email">Email</label>
+        <input class="form-input" id="admin-user-email" type="email" required>
+      </div>
+      <div class="form-group" id="admin-password-field">
+        <label for="admin-user-password">Senha</label>
+        <input class="form-input" id="admin-user-password" type="password" minlength="8">
+        <div class="field-help">Minimo de 8 caracteres.</div>
+      </div>
+      <div class="form-group">
+        <label for="admin-user-role">Perfil</label>
+        <select id="admin-user-role" required>
+          <option value="EMPLOYEE">Funcionario</option>
+          <option value="MANAGER">Gestor</option>
+          <option value="DIRECTOR">Diretor</option>
+          <option value="FINANCE">Financeiro</option>
+          <option value="CONTAS_A_PAGAR">Contas a Pagar (scanner / read-only)</option>
+          <option value="ADMIN">Admin</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="admin-user-dept-id">Setor <span id="admin-dept-required" class="field-required">*</span></label>
+        <select class="form-input" id="admin-user-dept-id">
+          <option value="">Selecione um setor...</option>
+        </select>
+        <div class="field-help">Obrigatorio para todos exceto Admin.</div>
+      </div>
+      <div class="form-group" id="admin-manager-field">
+        <label for="admin-user-manager">Gestor imediato</label>
+        <select id="admin-user-manager">
+          <option value="">Sem gestor</option>
+        </select>
+      </div>
+    </div>
+    <label class="checkbox-row">
+      <input type="checkbox" id="admin-user-submit-directly">
+      Envia notas direto ao diretor (sem passar pelo gestor)
+    </label>
+    <label class="checkbox-row">
+      <input type="checkbox" id="admin-user-must-change" checked>
+      Obrigar troca de senha no proximo login
+    </label>
+    <div class="form-actions">
+      <a class="btn btn-ghost" href="/admin/users">Cancelar</a>
+      <button class="btn btn-primary" id="admin-user-submit" type="submit">
+        {% if mode == "edit" %}Salvar Alteracoes{% else %}Criar Usuario{% endif %}
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

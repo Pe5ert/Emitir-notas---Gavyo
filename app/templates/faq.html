@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Perguntas frequentes{% endblock %}
+{% block page_id %}faq{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Perguntas frequentes</h1>
+  <p class="text-muted">Duvidas comuns sobre o uso do sistema.</p>
+</div>
+
+{# Helper local — macro que renderiza um item da FAQ (pergunta + resposta accordion) #}
+{% macro qa(question, answer) %}
+  <details class="faq-item">
+    <summary>{{ question }}</summary>
+    <div class="faq-answer">{{ answer | safe }}</div>
+  </details>
+{% endmacro %}
+
+{# ─── Geral (todos os perfis veem) ─────────────────────────────────────── #}
+<section class="card" style="max-width:860px;margin-bottom:1rem">
+  <div class="card-body">
+    <h2 class="section-title">Geral</h2>
+    {{ qa("Como troco minha senha?",
+      "Clique em <strong>Configuracoes</strong> no topo direito, depois em <em>Trocar senha</em>. Sua nova senha precisa ter no minimo 8 caracteres, com pelo menos uma letra e um numero.") }}
+    {{ qa("Esqueci minha senha. O que faco?",
+      "Na tela de login clique em <strong>Esqueci minha senha</strong>. Voce recebera um codigo de 6 digitos no seu email cadastrado (validade de 15 minutos). Use o codigo + nova senha para redefinir.") }}
+    {{ qa("Minha conta foi bloqueada. O que aconteceu?",
+      "Apos 5 tentativas seguidas de login com senha incorreta, sua conta e bloqueada temporariamente por 10 minutos como medida de seguranca. Voce recebe um email avisando. Espere o tempo e tente novamente.") }}
+    {{ qa("Por que aparecem avisos amarelos no topo da nota?",
+      "Sao alertas informativos: se a nota foi enviada com data de emissao do mes anterior, ou se o vencimento esta proximo (menos de 72h). Sao apenas avisos — nao bloqueiam o fluxo.") }}
+    {{ qa("O sistema esta lento ou da erro. O que faco?",
+      "Recarregue a pagina (Ctrl+F5). Se persistir, faca logout e login novamente. Se ainda assim nao funcionar, contate o administrador.") }}
+    {{ qa("Para que serve a pagina /verify do QR code?",
+      "Permite a qualquer pessoa conferir a autenticidade de um comprovante impresso. Sem login, aparece a versao publica (numero, valor, status, assinatura digital — dados sensiveis como CPF/CNPJ e nomes ficam parcialmente ocultos). Quem participa do fluxo (criador, gestor, diretor, financeiro, contas a pagar) pode fazer login para ver o detalhamento completo.") }}
+    {{ qa("Como pesquisar notas com volume grande?",
+      "Em <strong>Notas Fiscais</strong>, a busca cobre numero, descricao, fornecedor e CPF/CNPJ (mascara opcional). Em filtros avancados (clique em 'Mais filtros'), use intervalos de data/valor, fornecedor especifico e setor. A lista pagina automaticamente — use os controles no rodape para ir de pagina ou trocar a quantidade por pagina (20, 50, 100). Acentos sao ignorados em PostgreSQL: 'escritorio' acha 'escritorio' e 'escritorio'.") }}
+  </div>
+</section>
+
+{# ─── Funcionario ──────────────────────────────────────────────────────── #}
+{% if user_role in ["EMPLOYEE", "ADMIN"] %}
+<section class="card" style="max-width:860px;margin-bottom:1rem">
+  <div class="card-body">
+    <h2 class="section-title">Para funcionarios</h2>
+    {{ qa("Como crio uma nota fiscal?",
+      "Acesse <strong>Notas Fiscais</strong> no menu lateral e clique em <em>Nova Nota</em>. Preencha numero, datas, valor, descricao e anexe o PDF (maximo 10 MB). Voce pode salvar como rascunho ou enviar direto pro seu gestor.") }}
+    {{ qa("Por que tenho que digitar CPF ou CNPJ do fornecedor?",
+      "Identifica univocamente quem recebera o pagamento e da rastreabilidade fiscal. O sistema valida o digito (Mod 11) — se voce digitar errado, ele avisa. Para CNPJ, a razao social e preenchida automaticamente apos a validacao.") }}
+    {{ qa("Minha nota foi reprovada. E agora?",
+      "Acesse a nota, clique em <em>Editar</em>, ajuste a descricao conforme o motivo apontado e clique em <em>Reenviar</em>. <strong>Voce e obrigado a editar a descricao</strong> antes de reenviar — sem alteracao o sistema bloqueia. Notas reprovadas sao apagadas automaticamente apos <strong>90 dias</strong>, entao corrija e reenvie antes.") }}
+    {{ qa("Posso cancelar uma nota que ja enviei?",
+      "Sim, enquanto estiver em status <em>Aguardando gestor</em> ou <em>Aguardando diretor</em> e ninguem ainda tiver aprovado. Apos a primeira aprovacao, o cancelamento nao e mais possivel.") }}
+    {{ qa("Posso excluir uma nota reprovada?",
+      "Sim. Se voce decidiu nao corrigir e reenviar, basta clicar em <em>Excluir</em> na nota reprovada. Os arquivos PDF tambem sao removidos. Apos 90 dias o sistema apaga automaticamente — se voce quer descartar antes, exclua manualmente.") }}
+    {{ qa("Por que nao consigo enviar minha nota?",
+      "Possiveis razoes: (1) o vencimento ja passou — atualize a data de vencimento; (2) voce nao tem gestor cadastrado — contate o admin; (3) o PDF e maior que 10 MB.") }}
+    {{ qa("Quanto tempo demora pra aprovacao?",
+      "Depende do gestor e do diretor responsaveis. Apos cada aprovacao, voce e notificado por email. Notas com vencimento proximo ficam destacadas para acelerar a fila.") }}
+    {{ qa("O que e 'enviar direto ao diretor'?",
+      "Algumas pessoas tem essa opcao habilitada pelo admin — pulam a etapa de aprovacao do gestor e enviam direto pro diretor. Se a opcao nao aparece pra voce, e porque o fluxo padrao do seu setor passa pelo gestor.") }}
+  </div>
+</section>
+{% endif %}
+
+{# ─── Gestor ───────────────────────────────────────────────────────────── #}
+{% if user_role in ["MANAGER", "ADMIN"] %}
+<section class="card" style="max-width:860px;margin-bottom:1rem">
+  <div class="card-body">
+    <h2 class="section-title">Para gestores</h2>
+    {{ qa("Como aprovo uma nota?",
+      "Acesse <strong>Fila de aprovacao</strong> no menu, clique em <em>Aprovar</em>. Voce precisa selecionar qual diretor vai receber em seguida — depois clica em <em>Confirmar</em>. Diretores em ferias nao aparecem na lista.") }}
+    {{ qa("Como reprovo uma nota?",
+      "Clique em <em>Reprovar</em>, escreva o motivo no modal (minimo 10 caracteres). O criador e notificado por email com o motivo e pode reenviar apos editar a descricao.") }}
+    {{ qa("Vejo notas de outros setores?",
+      "Nao. Voce so ve notas dos colaboradores que tem voce como gestor direto.") }}
+    {{ qa("Vou tirar ferias. Como pausar o recebimento?",
+      "Va em <strong>Configuracoes</strong> e marque <em>Estou indisponivel</em>. Funcionarios nao poderao mais te selecionar pra notas novas. As notas que ja chegaram pra voce continuam pendentes — alguem precisa cobrir ou voce precisa aprovar antes de sair.") }}
+    {{ qa("Posso transferir uma nota que ja recebi pra outro gestor?",
+      "Nao diretamente. Voce pode reprovar pedindo pro funcionario reenviar — mas isso so funciona se ele tem outro gestor cadastrado. Alternativa: contate o admin para reatribuir.") }}
+  </div>
+</section>
+{% endif %}
+
+{# ─── Diretor ──────────────────────────────────────────────────────────── #}
+{% if user_role in ["DIRECTOR", "ADMIN"] %}
+<section class="card" style="max-width:860px;margin-bottom:1rem">
+  <div class="card-body">
+    <h2 class="section-title">Para diretores</h2>
+    {{ qa("Como aprovo uma nota?",
+      "Acesse <strong>Fila de aprovacao</strong>, abra a nota e clique em <em>Aprovar</em>. Apos sua aprovacao a nota fica disponivel pra todo o Financeiro lancar.") }}
+    {{ qa("Posso criar e enviar uma nota propria direto ao Financeiro?",
+      "Sim. Va em <strong>Notas Fiscais</strong> -> <em>Nova Nota</em>. Preencha os dados e clique em <em>Criar e Enviar ao Financeiro</em>. A nota e auto-aprovada (voce e diretor) e vai direto pra fila de lancamento. Util quando voce mesmo e o solicitante e aprovador.") }}
+    {{ qa("Por que tenho que digitar CPF ou CNPJ do fornecedor quando crio nota?",
+      "Identifica univocamente quem recebera o pagamento e da rastreabilidade fiscal. O sistema valida o digito (Mod 11). Para CNPJ, a razao social e preenchida automaticamente apos a validacao.") }}
+    {{ qa("Como reprovo uma nota?",
+      "Clique em <em>Reprovar</em> e escreva o motivo no modal (minimo 10 caracteres). O criador e notificado por email e pode editar e reenviar.") }}
+    {{ qa("Vejo notas de outros diretores?",
+      "Nao. Voce so ve as notas atribuidas a voce especificamente. O isolamento entre setores e total.") }}
+    {{ qa("Vou tirar ferias. Como pausar recebimento de novas notas?",
+      "Va em <strong>Configuracoes</strong> e ative <em>Estou indisponivel</em>. Gestores nao poderao mais te encaminhar notas novas. As notas pendentes na sua fila continuam — voce precisa aprovar antes de sair ou alguem precisa cobrir.") }}
+    {{ qa("Posso ver notas que ja aprovei e foram lancadas?",
+      "Sim. As notas que voce aprovou ficam visiveis na sua lista mesmo apos o lancamento.") }}
+    {{ qa("Recebi um email avisando que outro diretor foi criado / desativado / teve a senha redefinida. O que faco?",
+      "E uma notificacao automatica de seguranca. Sempre que um admin executa acao sensivel em conta de diretor, voce e os outros diretores ativos sao avisados em segundos. Se voce <strong>autorizou</strong> ou ja sabia, ignore. Se <strong>nao</strong> autorizou e parece estranho, conteste imediatamente com a diretoria.") }}
+    {{ qa("Recebi um banner vermelho dizendo que minha conta sera desativada em 24h. E real?",
+      "Foi um admin que solicitou. Se nao foi autorizado por voce, clique em <em>Nao foi autorizada</em> no proprio banner do dashboard. Voce tem 24h para cancelar antes que a acao seja aplicada. Se for legitimo (demissao real combinada com RH), nao precisa fazer nada — a acao executa sozinha apos 24h.") }}
+    {{ qa("Vejo no meu dashboard uma acao pendente contra outro diretor. O que faco?",
+      "Voce e peer e pode atuar. Se sabe que a acao e legitima, clique em <em>Confirmar e aplicar agora</em> — o efeito vai imediato, sem esperar as 24h (util em demissao real). Se acha que e indevida, clique em <em>Cancelar</em>.") }}
+  </div>
+</section>
+{% endif %}
+
+{# ─── Contas a Pagar ───────────────────────────────────────────────────── #}
+{% if user_role in ["CONTAS_A_PAGAR", "ADMIN"] %}
+<section class="card" style="max-width:860px;margin-bottom:1rem">
+  <div class="card-body">
+    <h2 class="section-title">Para Contas a Pagar</h2>
+    {{ qa("Como uso o scanner?",
+      "Acesse <strong>Scanner QR</strong> no menu lateral (ou aperte <kbd>F2</kbd> no dashboard). Duas formas: (1) bipador — clique no campo de texto e bipe o QR code, abrira automaticamente; (2) camera — clique em <em>Iniciar camera</em> (ideal no celular), aponte pro QR.") }}
+    {{ qa("Posso aprovar ou editar nota?",
+      "Nao. Seu perfil e de conferencia (read-only). Voce ve todas as notas e pode reimprimir o comprovante de notas ja <em>Lancadas</em> pelo Financeiro. Para qualquer outra acao, contate o responsavel pelo fluxo.") }}
+    {{ qa("Posso reimprimir comprovante de qualquer nota?",
+      "Apenas de notas com status <em>Lancada</em> (PAGO). A primeira impressao — que efetiva o lancamento — continua exclusiva do Financeiro.") }}
+    {{ qa("O contador 'Conferidas hoje' conta o que?",
+      "Quantas vezes voce reimprimiu comprovantes nas ultimas 24 horas. Util pra acompanhar o ritmo do turno.") }}
+  </div>
+</section>
+{% endif %}
+
+{# ─── Financeiro ───────────────────────────────────────────────────────── #}
+{% if user_role in ["FINANCE", "ADMIN"] %}
+<section class="card" style="max-width:860px;margin-bottom:1rem">
+  <div class="card-body">
+    <h2 class="section-title">Para o Financeiro</h2>
+    {{ qa("Como lanco uma nota?",
+      "Acesse <strong>Lancamentos</strong> no menu, abra a nota aprovada e clique em <em>Imprimir e Lancar Nota</em>. O sistema gera o comprovante PDF e marca a nota como <em>Lancada</em> automaticamente, tirando-a da fila operacional.") }}
+    {{ qa("Posso reimprimir um comprovante depois?",
+      "Sim. Abra qualquer nota ja lancada e clique em <em>Re-imprimir Comprovante</em>. O sistema NAO registra reimpressao no historico (evita poluicao de logs).") }}
+    {{ qa("Vejo notas antes do diretor aprovar?",
+      "Nao. Voce so ve notas com status <em>Aprovado</em> (prontas pra lancar) ou <em>Lancada</em> (ja finalizadas). Notas em rascunho ou aguardando aprovacao nao aparecem pra voce.") }}
+    {{ qa("O sistema executa o pagamento?",
+      "Nao. O sistema apenas <strong>registra</strong> que a nota foi lancada (impressa e arquivada). O pagamento efetivo e feito por processo externo (banco, ERP, etc).") }}
+    {{ qa("Posso ver notas de setores especificos?",
+      "Sim. Voce ve todas as notas aprovadas/lancadas. Use os filtros (setor, valor, vencimento) para focar.") }}
+  </div>
+</section>
+{% endif %}
+
+{# ─── Admin ────────────────────────────────────────────────────────────── #}
+{% if user_role == "ADMIN" %}
+<section class="card" style="max-width:860px;margin-bottom:1rem">
+  <div class="card-body">
+    <h2 class="section-title">Para administradores</h2>
+    {{ qa("Como crio um usuario?",
+      "Va em <strong>Usuarios</strong> e clique em <em>Novo Usuario</em>. Setor e obrigatorio para Funcionario/Gestor/Diretor/Financeiro. Funcionario precisa ter gestor OU marcar <em>Envia direto ao diretor</em>. Sem isso, o fluxo trava no envio da nota.") }}
+    {{ qa("Por que nao consigo resetar a senha de outro admin?",
+      "Protecao contra sequestro de conta. Apenas o proprio admin pode redefinir a propria senha (via 'Esqueci minha senha' ou 'Trocar senha' apos login).") }}
+    {{ qa("Como configuro o envio de email automatico?",
+      "Por seguranca, o SMTP/Resend agora e configurado em variaveis de ambiente do servidor (<code>EMAIL_PROVIDER</code>, <code>SMTP_HOST</code>, <code>SMTP_PASSWORD</code> ou <code>RESEND_API_KEY</code>) — admin do app nao mexe mais nisso. Quem opera a infra (Railway) ajusta direto no painel. Razao: impedir que um admin mal-intencionado redirecione SMTP para interceptar codigos de reset de senha.") }}
+    {{ qa("Como encerro o cadastro de um colaborador que se desligou?",
+      "Primeiro <em>Desative</em> o usuario. Depois use o botao <em>Encerrar conta</em>. Nome e email sao substituidos por placeholders e o login fica permanentemente bloqueado; o historico de aprovacoes e preservado por exigencia fiscal (CTN, 5 anos).") }}
+    {{ qa("O que sao os 'alertas' que aparecem no topo das notas?",
+      "Banners amarelos informativos quando: (1) emissao em mes anterior ao envio, (2) vencimento em menos de 72h. Sao puramente informativos — nao bloqueiam fluxo. Notas com vencimento JA PASSADO sao bloqueadas no envio (nao geram alerta).") }}
+    {{ qa("Posso ver tudo no sistema?",
+      "Sim. Admin tem acesso total a todas as notas, todos os usuarios, todos os setores e todos os logs de auditoria. Use isso com responsabilidade.") }}
+    {{ qa("Como funciona o bloqueio de 5 tentativas?",
+      "Apos 5 tentativas de login com senha errada, a conta e bloqueada por 10 minutos. O usuario recebe email. Voce pode <em>Desbloquear</em> manualmente em <strong>Usuarios</strong> sem esperar.") }}
+    {{ qa("Tentei desativar um diretor mas o sistema agendou pra 24h. Por que?",
+      "E uma trava de seguranca: desativacao, encerramento e redefinicao de senha de diretor entram numa janela de tolerancia de 24h. Durante esse periodo o proprio diretor afetado, outro diretor ou outro admin podem cancelar a acao se ela for indevida. Apos 24h sem cancelamento, o efeito e aplicado automaticamente. Se for uma demissao real e voce precisa aplicar AGORA, peca a outro diretor (ou admin diferente do solicitante) pra abrir o dashboard e clicar em <em>Confirmar e aplicar agora</em>.") }}
+    {{ qa("Quando um novo diretor e criado, quem fica sabendo?",
+      "Todos os outros diretores ativos recebem email automaticamente, com o nome do solicitante e do novo diretor. Isso impede que um admin crie um diretor fictnicio sem que os reais percebam. O mesmo vale para desativacao, encerramento e redefinicao de senha de diretor.") }}
+    {{ qa("Como sei se o log de auditoria foi adulterado?",
+      "Cada linha do audit_logs contem um hash da linha anterior (cadeia). Edicao retroativa direta no banco quebra a cadeia. Para verificar, chame <code>GET /api/admin/audit-logs/verify-chain</code> — retorna <em>ok</em> e a primeira linha quebrada (se houver).") }}
+  </div>
+</section>
+{% endif %}
+
+<footer class="faq-footer">
+  <a href="/privacidade">Privacidade e Termos de Uso</a>
+</footer>
+{% endblock %}

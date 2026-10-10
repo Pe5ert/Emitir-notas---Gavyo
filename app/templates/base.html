@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Economart{% endblock %} - Notas Fiscais</title>
+  <link rel="icon" type="image/png" href="/static/img/favicon.png">
+  <link rel="apple-touch-icon" href="/static/img/favicon.png">
+  <meta name="theme-color" content="#1B4F8A">
+  <meta name="color-scheme" content="light">
+  <!--
+    Critical CSS inline: define cor de fundo do shell ANTES do main.css
+    chegar. Sem isso o navegador pinta branco entre paginas ate o CSS
+    externo aplicar (varia 30-200ms dependendo de cache/banda). Com isso
+    a "tela branca" entre navegacoes some — a primeira pintura ja sai
+    com o sidebar azul e o conteudo cinza claro.
+  -->
+  <style>
+    html, body { background: #F4F5F7; margin: 0; }
+    body { font-family: 'Inter', system-ui, -apple-system, Segoe UI, sans-serif; color: #1F2937; }
+    /* Shell estavel: cores e layout aplicados antes do CSS externo
+       para evitar reflow visivel quando main.css aplica .layout {display:flex} */
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar {
+      position: fixed; inset: 0 auto 0 0; width: 240px;
+      background: #1B4F8A; color: #fff;
+    }
+    .main-wrapper { width: calc(100% - 240px); margin-left: 240px; min-height: 100vh; }
+    .header { min-height: 64px; background: #fff; border-bottom: 1px solid #E5E7EB; }
+    .content { padding: 28px; }
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); }
+      .main-wrapper { width: 100%; margin-left: 0; }
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/css/main.css?v={{ STATIC_VERSION }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body data-page="{% block page_id %}{% endblock %}">
+  <div class="layout" id="app-layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <img src="/static/img/logo.png" alt="Economart" class="logo">
+      </div>
+      <nav class="sidebar-nav">
+        <a href="/dashboard" class="nav-item {% block nav_dashboard %}{% endblock %}">
+          <span class="nav-icon">&#9724;</span> Dashboard
+        </a>
+        <a href="/invoices" class="nav-item {% block nav_invoices %}{% endblock %}">
+          <span class="nav-icon">&#8801;</span> Notas Fiscais
+        </a>
+        <a href="/alerts" class="nav-item {% block nav_alerts %}{% endblock %}" id="nav-alerts">
+          <span class="nav-icon">&#9888;</span> Alertas
+          <span class="badge-count hidden" id="alert-count"></span>
+        </a>
+        <a href="/admin/users" class="nav-item nav-admin hidden" id="nav-admin">
+          <span class="nav-icon">&#9881;</span> Administracao
+        </a>
+      </nav>
+    </aside>
+
+    <div class="main-wrapper">
+      <header class="header">
+        <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Alternar menu">☰</button>
+        <div class="header-user">
+          <span id="header-user-name">Carregando...</span>
+          <span id="header-user-role" class="role-badge"></span>
+          <a href="/configuracoes" class="btn btn-ghost btn-sm">Configuracoes</a>
+          <button class="btn btn-ghost btn-sm" id="logout-btn">Sair</button>
+        </div>
+      </header>
+      <main class="content">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  <footer class="privacy-footer">
+    <a href="/faq" class="privacy-link">Perguntas frequentes</a>
+    <span class="privacy-sep">·</span>
+    <a href="/privacidade" class="privacy-link">Privacidade e Termos</a>
+  </footer>
+  <div id="toast-container"></div>
+  <div id="loading-overlay" class="hidden">
+    <div class="spinner"></div>
+  </div>
+  {# P2-1 v3: app.js foi quebrado em modulos. Ordem importa: helpers puros,
+     depois core (Auth/apiFetch), depois shell + features, dispatcher por ultimo.
+     Veja docs/plan-appjs-split-v3.md. #}
+  <script src="/static/js/format.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/documents.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/core.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/core-auth.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/core-api.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/core-ui.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/core-network.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/core-keyboard.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/shell.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/pdf-viewer.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/comments.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/password.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/invoices-list.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/invoice-form.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/invoice-detail.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/alerts.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/finance.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/review.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/admin-users.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/admin-departments.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/admin-audit.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/drawer.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/app.js?v={{ STATIC_VERSION }}"></script>
+  <script src="/static/js/dispatcher.js?v={{ STATIC_VERSION }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,18 @@
+/* Economart CSS aggregator.
+   P2-7: main.css now imports ordered partials to preserve the original cascade.
+   Keep imports in this order unless a visual regression is intentional. */
+@import url("./base/transitions.css");
+@import url("./base/tokens.css");
+@import url("./base/layout.css");
+@import url("./components/shared.css");
+@import url("./responsive.css");
+@import url("./pages/invoices-review.css");
+@import url("./pages/admin-content.css");
+@import url("./pages/drawer-icons-dashboard.css");
+@import url("./pages/invoice-form.css");
+@import url("./utilities.css");
+@import url("./pages/comments.css");
+@import url("./components/navigation-shortcuts.css");
+@import url("./pages/pdf-viewer.css");
+@import url("./components/forms-pagination-skeleton.css");
+@import url("./pages/errors.css");
